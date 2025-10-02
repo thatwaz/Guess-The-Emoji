@@ -1,5 +1,6 @@
 package com.thatwaz.guesstheemoji.ui.home
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -23,17 +25,47 @@ fun HomeScreen(onPlay: () -> Unit, onSettings: () -> Unit) {
         contentWindowInsets = WindowInsets.safeDrawing
     ) { inner ->
         Column(
-            Modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(inner)
                 .padding(16.dp),
+            verticalArrangement = Arrangement.Center,   // center vertically
+            horizontalAlignment = Alignment.CenterHorizontally // center horizontally
         ) {
-            Text("Guess the Emoji", style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onPlay, modifier = Modifier.fillMaxWidth()) { Text("Play") }
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Settings") }
+            // Emoji banner / theme row
+            Text(
+                text = "🎬🍔🎵🐯📺",
+                style = MaterialTheme.typography.displaySmall
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Title
+            Text(
+                "Guess the Emojis",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(Modifier.height(32.dp))
+
+            // Play button
+            Button(
+                onClick = onPlay,
+                modifier = Modifier.fillMaxWidth(0.8f) // not full width, looks nicer
+            ) {
+                Text("▶ Play")
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Settings button
+            OutlinedButton(
+                onClick = onSettings,
+                modifier = Modifier.fillMaxWidth(0.8f)
+            ) {
+                Text("⚙ Settings")
+            }
         }
     }
 }
-

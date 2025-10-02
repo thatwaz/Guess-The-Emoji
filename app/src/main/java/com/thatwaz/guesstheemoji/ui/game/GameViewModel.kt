@@ -2,6 +2,8 @@ package com.thatwaz.guesstheemoji.ui.game
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thatwaz.guesstheemoji.data.Category
+import com.thatwaz.guesstheemoji.data.EmojiPuzzle
 import com.thatwaz.guesstheemoji.data.EmojiPuzzles
 import com.thatwaz.guesstheemoji.data.Keys
 import com.thatwaz.guesstheemoji.data.Prefs
@@ -10,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+
 
 data class GameState(
     val level:Int=1,
@@ -20,6 +23,7 @@ data class GameState(
     val lastIntAt:Long=0L,
     val emojis:String="",
     val answer:String="",
+    val category: Category = Category.PHRASES_IDIOMS,
     val masked:String="",
     val guessed:Set<Char> = emptySet(),
     val wrong:Set<Char> = emptySet(),
@@ -30,6 +34,8 @@ data class GameState(
 class GameViewModel(private val prefs: Prefs): ViewModel() {
     private val _ui = MutableStateFlow(GameState())
     val ui: StateFlow<GameState> = _ui
+
+    private var order: List<Int> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -44,7 +50,15 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
         }
     }
 
-    private fun puzzleFor(level:Int)= EmojiPuzzles.puzzles[(level-1).mod(EmojiPuzzles.puzzles.size)]
+    private fun ensureOrder() {
+        if (order.isEmpty()) order = EmojiPuzzles.puzzles.indices.shuffled()
+    }
+
+    private fun puzzleFor(level: Int): EmojiPuzzle {
+        ensureOrder()
+        val idx = order[(level - 1).mod(order.size)]
+        return EmojiPuzzles.puzzles[idx]
+    }
 
     private fun isRevealable(c:Char)= c.isLetter()
     private fun mask(answer:String, guessed:Set<Char>) =
@@ -66,76 +80,119 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     ) {
         val p = puzzleFor(level)
 
-        // CLAMP stale state so keyboard is enabled on first screen
-        val safeAttempts = if (attempts <= 0) com.thatwaz.guesstheemoji.domain.Rules.MAX_ATTEMPTS else attempts
-        val safeLives    = if (lives <= 0) com.thatwaz.guesstheemoji.domain.Rules.ARCADE_LIVES else lives
+        val safeAttempts = if (attempts <= 0) Rules.MAX_ATTEMPTS else attempts
+
+        // ✅ Clamp lives into 1..ARCADE_LIVES and persist if it was different
+        val targetLives = lives.coerceIn(1, Rules.ARCADE_LIVES)
+        if (targetLives != lives) {
+            viewModelScope.launch { prefs.setLives(targetLives) }
+        }
 
         _ui.value = GameState(
             level = kotlin.math.max(1, level),
             attemptsLeft = safeAttempts,
-            livesLeft = safeLives,
+            livesLeft = targetLives,
             adsRemoved = adsRemoved,
             solvedSinceInt = solvedSince,
             lastIntAt = lastInt,
             emojis = p.emojis,
             answer = p.answer,
+            category = p.category,
             masked = mask(p.answer, emptySet())
         )
     }
 
 
-    fun onLetterTap(ch:Char) {
+    // Small helper to DRY up "go to a specific level with attempts/lives"
+    private fun advanceTo(level: Int, attempts: Int, lives: Int) {
+        viewModelScope.launch {
+            prefs.setLevel(level)
+            prefs.setAttempts(attempts)
+            prefs.setLives(lives)
+            loadLevel(
+                level = level,
+                attempts = attempts,
+                lives = lives,
+                adsRemoved = _ui.value.adsRemoved,
+                solvedSince = _ui.value.solvedSinceInt,
+                lastInt = _ui.value.lastIntAt
+            )
+        }
+    }
+
+    fun onLetterTap(ch: Char) {
         val s = _ui.value
-        if (s.solved || s.failed || s.attemptsLeft<=0) return
+        if (s.solved || s.failed || s.attemptsLeft <= 0) return
+
         val L = ch.lowercaseChar()
         if (!L.isLetter() || s.guessed.contains(L)) return
 
-        val ansLower = s.answer.lowercase()
-        val hit = ansLower.any { it==L }
+        val hit = s.answer.lowercase().any { it == L }
         val newGuessed = s.guessed + L
 
         if (hit) {
             val newMasked = mask(s.answer, newGuessed)
-            val solved = newMasked.none { it=='_' }
-            val nextSolvedSince = if (solved) s.solvedSinceInt+1 else s.solvedSinceInt
-            _ui.value = s.copy(masked=newMasked, guessed=newGuessed, solved=solved, solvedSinceInt=nextSolvedSince)
-            if (solved) viewModelScope.launch { prefs.incSolvedSinceInt() }
-        } else {
-            val attempts = s.attemptsLeft-1
-            val failThisPuzzle = attempts<=0
-            val newLives = if (failThisPuzzle) (s.livesLeft-1).coerceAtLeast(0) else s.livesLeft
+            val solved = newMasked.none { it == '_' }
+            val nextSolvedSince = if (solved) s.solvedSinceInt + 1 else s.solvedSinceInt
+
             _ui.value = s.copy(
-                guessed=newGuessed,
-                wrong=s.wrong + L,
-                attemptsLeft=attempts,
-                failed = failThisPuzzle && newLives==s.livesLeft,
-                livesLeft=newLives
+                masked = newMasked,
+                guessed = newGuessed,
+                solved = solved,
+                solvedSinceInt = nextSolvedSince
             )
+
+            if (solved) {
+                viewModelScope.launch {
+                    prefs.incSolvedSinceInt()
+                    // Persist a clean attempts value so a background/kill doesn't reload mid-round
+                    prefs.setAttempts(Rules.MAX_ATTEMPTS)
+                }
+            }
+        } else {
+            val attempts = s.attemptsLeft - 1
+            val roundFailed = attempts <= 0
+            val newLives = if (roundFailed) (s.livesLeft - 1).coerceAtLeast(0) else s.livesLeft
+
+            _ui.value = s.copy(
+                guessed = newGuessed,
+                wrong = s.wrong + L,
+                attemptsLeft = attempts,
+                failed = roundFailed,
+                livesLeft = newLives,
+                masked = if (roundFailed) s.answer else s.masked // reveal on fail
+            )
+
             viewModelScope.launch {
-                prefs.setAttempts(attempts)
                 prefs.setLives(newLives)
+                // Option A (current): keep attempts as-is; next() will reset to MAX.
+                // Option B (eager reset): uncomment the next line to persist MAX immediately:
+                // prefs.setAttempts(Rules.MAX_ATTEMPTS)
             }
         }
     }
 
     fun next() {
-        val s=_ui.value
+        val s = _ui.value
+
+        // Game Over → full reset and new order
         if (s.livesLeft <= 0) {
-            viewModelScope.launch {
-                prefs.setLevel(1)
-                prefs.setAttempts(com.thatwaz.guesstheemoji.domain.Rules.MAX_ATTEMPTS)
-                prefs.setLives(com.thatwaz.guesstheemoji.domain.Rules.ARCADE_LIVES)
-                loadLevel(1, com.thatwaz.guesstheemoji.domain.Rules.MAX_ATTEMPTS,
-                    com.thatwaz.guesstheemoji.domain.Rules.ARCADE_LIVES,
-                    s.adsRemoved, s.solvedSinceInt, s.lastIntAt)
-            }
+            order = emptyList() // optional: new shuffle after game over
+            advanceTo(
+                level = 1,
+                attempts = Rules.MAX_ATTEMPTS,
+                lives = Rules.ARCADE_LIVES
+            )
             return
         }
-        val nextLevel = s.level+1
-        viewModelScope.launch {
-            prefs.setLevel(nextLevel); prefs.setAttempts(Rules.MAX_ATTEMPTS)
-            loadLevel(nextLevel, Rules.MAX_ATTEMPTS, s.livesLeft, s.adsRemoved, s.solvedSinceInt, s.lastIntAt)
-        }
+
+        // Continue to next level with fresh attempts
+        val nextLevel = s.level + 1
+        advanceTo(
+            level = nextLevel,
+            attempts = Rules.MAX_ATTEMPTS,
+            lives = s.livesLeft
+        )
     }
 
     fun shouldShowInterstitial(now:Long): Boolean {
@@ -145,10 +202,16 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
         if (now - s.lastIntAt < Rules.INTERSTITIAL_MIN_MS) return false
         return true
     }
+
     fun onInterstitialShown(now:Long) {
         val s=_ui.value
         _ui.value = s.copy(lastIntAt=now, solvedSinceInt=0)
         viewModelScope.launch { prefs.setLastIntAt(now); prefs.resetSolvedSinceInt() }
     }
-    fun setAdsRemoved(r:Boolean) { _ui.value = _ui.value.copy(adsRemoved=r); viewModelScope.launch{ prefs.setAdsRemoved(r)} }
+
+    fun setAdsRemoved(r:Boolean) {
+        _ui.value = _ui.value.copy(adsRemoved=r)
+        viewModelScope.launch{ prefs.setAdsRemoved(r) }
+    }
 }
+
