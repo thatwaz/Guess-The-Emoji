@@ -170,23 +170,20 @@ fun PuzzleScreen(
             ) { vm.onLetterTap(it) }
 
             Spacer(Modifier.height(12.dp))
-
             when {
                 s.solved -> Button(
                     onClick = { vm.next() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Next") }
 
-                // 👇 Hide the failed block when Game Over is active
-                s.failed && s.livesLeft > 0 -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Answer: ${s.answer}", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { vm.next() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Next") }
-                }
+                // Show a clean Next when player failed but still has lives;
+                // the answer is already revealed in the puzzle area above.
+                s.failed && s.livesLeft > 0 -> Button(
+                    onClick = { vm.next() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Next") }
             }
+
         }
 
         // ─────────── AD (bottom, pinned) ───────────
@@ -255,31 +252,7 @@ private fun maskedTextSizeFor(answer: String) = when {
     else               -> 24.sp
 }
 
-//// Keep letters of each word together (NBSP between letters, space between words)
-//private fun spacedByWord(mask: String, answer: String): String {
-//    val nbsp = '\u00A0'
-//    val out = StringBuilder()
-//    for (i in mask.indices) {
-//        val a = answer[i]
-//        val m = mask[i]
-//        if (a.isWhitespace()) {
-//            out.append(' ')
-//        } else {
-//            if (i > 0 && !answer[i - 1].isWhitespace()) out.append(nbsp)
-//            out.append(m)
-//        }
-//    }
-//    return out.toString()
-//}
 
-// Light auto-sizing for long phrases
-//@Composable
-//private fun maskedTextSizeFor(answer: String) = when {
-//    answer.length > 28 -> 18.sp
-//    answer.length > 22 -> 20.sp
-//    answer.length > 16 -> 22.sp
-//    else               -> 24.sp
-//}
 
 /* ====================== Effects: Shake & Flash ====================== */
 
