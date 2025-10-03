@@ -34,8 +34,8 @@ fun HomeScreen(onPlay: () -> Unit, onSettings: () -> Unit) {
         ) {
             // Emoji banner / theme row
             Text(
-                text = "🎬🍔🎵🐯📺",
-                style = MaterialTheme.typography.displaySmall
+                text = "❓🎬🍔🎵🐯📺❓",
+                style = MaterialTheme.typography.headlineLarge
             )
 
             Spacer(Modifier.height(16.dp))
