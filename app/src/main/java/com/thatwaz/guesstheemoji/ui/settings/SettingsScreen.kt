@@ -63,7 +63,7 @@ fun SettingsScreen(
             onClick = {
                 sendEmail(
                     ctx,
-                    to = "youremail@example.com",
+                    to = "brettwaz23@gmail.com",
                     subject = "Guess the Emoji – Feedback",
                     body = feedbackTemplate()
                 )
