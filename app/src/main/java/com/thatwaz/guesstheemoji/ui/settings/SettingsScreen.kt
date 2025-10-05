@@ -38,6 +38,7 @@ fun SettingsScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(Modifier.height(40.dp))
         Text("Settings", style = MaterialTheme.typography.headlineMedium)
 
         Spacer(Modifier.height(12.dp))

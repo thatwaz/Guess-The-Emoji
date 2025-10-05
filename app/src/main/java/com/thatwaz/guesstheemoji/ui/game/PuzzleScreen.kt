@@ -3,6 +3,7 @@ package com.thatwaz.guesstheemoji.ui.game
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,8 @@ fun PuzzleScreen(
     BannerAd: @Composable () -> Unit
 ) {
     val s by vm.ui.collectAsState()
+    val cs = MaterialTheme.colorScheme
+    val typo = MaterialTheme.typography
 
     // Interstitial after solve
     LaunchedEffect(s.solved) {
@@ -56,10 +59,10 @@ fun PuzzleScreen(
         }
     }
 
-    // Haptics: bump on wrong / solved
+    // Haptics
     val haptic = LocalHapticFeedback.current
     LaunchedEffect(s.wrong.size) { if (s.wrong.isNotEmpty()) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-    LaunchedEffect(s.solved) { if (s.solved) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+    LaunchedEffect(s.solved)      { if (s.solved)           haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
 
     // Game Over dialog
     if (s.livesLeft <= 0) {
@@ -71,23 +74,35 @@ fun PuzzleScreen(
         )
     }
 
-
-    // Whole page respects system bars
+    // ✅ Explicit themed background so dark mode applies visually
     Column(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            .background(cs.background)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // ─────────── HUD (top) ───────────
-        TopHud(
-            lives = s.livesLeft,
-            attemptsLeft = s.attemptsLeft,
-            maxAttempts = Rules.MAX_ATTEMPTS
-        )
+        // HUD
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Lives ${"❤️".repeat(s.livesLeft.coerceAtLeast(0))}",
+                style = typo.bodyLarge,
+                color = cs.onBackground
+            )
+            Text(
+                text = "Attempts ${s.attemptsLeft}/${Rules.MAX_ATTEMPTS}",
+                style = typo.bodyLarge,
+                color = cs.onBackground
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
 
-        // ─────────── PUZZLE (centered vertically) ───────────
+        // Centered puzzle area
         Box(
             modifier = Modifier
                 .weight(1f, fill = true)
@@ -95,29 +110,29 @@ fun PuzzleScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .align(Alignment.Center) // true vertical center
+                    .align(Alignment.Center)
                     .padding(horizontal = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Level ${s.level}", style = MaterialTheme.typography.titleLarge)
+                Text("Level ${s.level}", style = typo.titleLarge, color = cs.onBackground)
 
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    s.category.label(), // enum -> readable label
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
+                    s.category.label(),
+                    style = typo.labelLarge,
+                    color = cs.primary
                 )
 
                 Spacer(Modifier.height(22.dp))
 
-                // Emoji line (optional flash on wrong)
+                // Emoji line (flash on wrong)
                 FlashColor(
                     triggerKey = s.wrong.size,
-                    baseColor = MaterialTheme.colorScheme.onSurface
+                    baseColor = cs.onSurface
                 ) { current ->
                     Text(
                         s.emojis,
-                        style = MaterialTheme.typography.displayLarge,
+                        style = typo.displayLarge,
                         color = current,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
@@ -126,11 +141,11 @@ fun PuzzleScreen(
 
                 Spacer(Modifier.height(14.dp))
 
-                // Masked answer (shake + flash on wrong) with better wrapping
+                // Masked answer (shake + flash)
                 val size = maskedTextSizeFor(s.answer)
                 FlashColor(
                     triggerKey = s.wrong.size,
-                    baseColor = MaterialTheme.colorScheme.onSurface
+                    baseColor = cs.onSurface
                 ) { current ->
                     Shakable(triggerKey = s.wrong.size) {
                         Text(
@@ -148,7 +163,7 @@ fun PuzzleScreen(
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "Wrong: ${s.wrong.sorted().joinToString(" ").uppercase()}",
-                        color = MaterialTheme.colorScheme.error,
+                        color = cs.error,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -156,13 +171,14 @@ fun PuzzleScreen(
             }
         }
 
-        // ─────────── KEYBOARD + round actions (fixed) ───────────
+        // Keyboard + actions
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 👉 Make sure HangmanKeyboard uses cs.* colors internally (see note below)
             HangmanKeyboard(
                 guessed = s.guessed,
                 wrong = s.wrong,
@@ -176,17 +192,14 @@ fun PuzzleScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Next") }
 
-                // Show a clean Next when player failed but still has lives;
-                // the answer is already revealed in the puzzle area above.
                 s.failed && s.livesLeft > 0 -> Button(
                     onClick = { vm.next() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Next") }
             }
-
         }
 
-        // ─────────── AD (bottom, pinned) ───────────
+        // Ad slot
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -195,29 +208,30 @@ fun PuzzleScreen(
     }
 }
 
+
 /* ====================== HUD ====================== */
 
-@Composable
-private fun TopHud(
-    lives: Int,
-    attemptsLeft: Int,
-    maxAttempts: Int
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = "Lives ${"❤️".repeat(lives.coerceAtLeast(0))}",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Text(
-            text = "Attempts $attemptsLeft/$maxAttempts",
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
-}
+//@Composable
+//private fun TopHud(
+//    lives: Int,
+//    attemptsLeft: Int,
+//    maxAttempts: Int
+//) {
+//    Row(
+//        modifier = Modifier.fillMaxWidth(),
+//        verticalAlignment = Alignment.CenterVertically,
+//        horizontalArrangement = Arrangement.SpaceBetween
+//    ) {
+//        Text(
+//            text = "Lives ${"❤️".repeat(lives.coerceAtLeast(0))}",
+//            style = MaterialTheme.typography.bodyLarge
+//        )
+//        Text(
+//            text = "Attempts $attemptsLeft/$maxAttempts",
+//            style = MaterialTheme.typography.bodyLarge
+//        )
+//    }
+//}
 
 /* ====================== Helpers: wrapping & sizing ====================== */
 
