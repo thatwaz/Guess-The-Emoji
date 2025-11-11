@@ -117,11 +117,25 @@ fun PuzzleScreen(
                 Text("Level ${s.level}", style = typo.titleLarge, color = cs.onBackground)
 
                 Spacer(Modifier.height(6.dp))
+                // Category title + playful subtitle
                 Text(
-                    s.category.label(),
+                    text = s.category.label(),
                     style = typo.labelLarge,
-                    color = cs.primary
+                    color = cs.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(Modifier.height(2.dp))
+
+                Text(
+                    text = s.category.subtitleText(),
+                    style = typo.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
 
                 Spacer(Modifier.height(22.dp))
 
@@ -209,29 +223,6 @@ fun PuzzleScreen(
 }
 
 
-/* ====================== HUD ====================== */
-
-//@Composable
-//private fun TopHud(
-//    lives: Int,
-//    attemptsLeft: Int,
-//    maxAttempts: Int
-//) {
-//    Row(
-//        modifier = Modifier.fillMaxWidth(),
-//        verticalAlignment = Alignment.CenterVertically,
-//        horizontalArrangement = Arrangement.SpaceBetween
-//    ) {
-//        Text(
-//            text = "Lives ${"❤️".repeat(lives.coerceAtLeast(0))}",
-//            style = MaterialTheme.typography.bodyLarge
-//        )
-//        Text(
-//            text = "Attempts $attemptsLeft/$maxAttempts",
-//            style = MaterialTheme.typography.bodyLarge
-//        )
-//    }
-//}
 
 /* ====================== Helpers: wrapping & sizing ====================== */
 
@@ -330,8 +321,24 @@ private fun Category.label(): String = when (this) {
     Category.MOVIES_TV      -> "Movies & TV"
     Category.FOOD_DRINK     -> "Food & Drink"
     Category.SONGS_MUSIC    -> "Songs & Music"
-    Category.PHRASES_IDIOMS -> "Phrases & Idioms"
+    Category.PHRASES_IDIOMS -> "Phrases / Misc"
     Category.ANIMALS_NATURE -> "Animals & Nature"
+    Category.CRAZY_COMBOS -> "Crazy Nonsense Combos"
+}
+
+fun Category.subtitleText(): String = when (this) {
+    Category.MOVIES_TV ->
+        "Blockbusters, classics, and total guessers."
+    Category.FOOD_DRINK ->
+        "Tastes better when you solve it."
+    Category.SONGS_MUSIC ->
+        "Humming is allowed. Singing, optional."
+    Category.PHRASES_IDIOMS ->
+        "Sayings, stuff people say, and random things that fit nowhere else."
+    Category.ANIMALS_NATURE ->
+        "Nature-ish things… probably."
+    Category.CRAZY_COMBOS ->
+        "We don’t know either. Just roll with it."
 }
 
 /* ====================== Game Over Dialog ====================== */

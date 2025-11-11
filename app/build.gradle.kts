@@ -8,6 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
+
         applicationId = "com.thatwaz.guesstheemoji"
         minSdk = 24
         targetSdk = 35
