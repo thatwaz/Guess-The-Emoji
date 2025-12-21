@@ -199,9 +199,10 @@ object EmojiPuzzles {
         EmojiPuzzle("🏙️✨", "Uptown Funk", Category.SONGS_MUSIC),
         EmojiPuzzle("🧣➡️", "Shake It Off", Category.SONGS_MUSIC),
         EmojiPuzzle("🌃🕺", "Night Fever", Category.SONGS_MUSIC),
-        EmojiPuzzle("🧊🧠", "Cold Heart", Category.SONGS_MUSIC),
+        EmojiPuzzle("🧊❤️", "Cold Heart", Category.SONGS_MUSIC),
 
-        // 💡 Phrases / Idioms
+
+                // 💡 Phrases / Idioms
         EmojiPuzzle("🏠💻☕", "Work From Home", Category.PHRASES_IDIOMS),
         EmojiPuzzle("🌧️☔", "Rainy Day", Category.PHRASES_IDIOMS),
         EmojiPuzzle("🛌💤", "Good Night", Category.PHRASES_IDIOMS),

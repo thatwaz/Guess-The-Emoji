@@ -6,7 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -16,7 +15,7 @@ import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.RequestConfiguration
 import com.thatwaz.guesstheemoji.data.Prefs
 import com.thatwaz.guesstheemoji.ui.ads.BannerAdView
-import com.thatwaz.guesstheemoji.ui.ads.InterstitialController   // 👈 add this import
+import com.thatwaz.guesstheemoji.ui.ads.InterstitialController
 import com.thatwaz.guesstheemoji.ui.game.GameViewModel
 import com.thatwaz.guesstheemoji.ui.game.PuzzleScreen
 import com.thatwaz.guesstheemoji.ui.home.HomeScreen
@@ -29,23 +28,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Lock portrait
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
-        // Initialize AdMob + whitelist THIS device for test ads
         initAdsForSafeTesting(
             testDeviceIds = listOf("A5208C8EAF5CC09EE0840870C49EB895")
         )
 
         val prefs = Prefs(this)
-        val activity = this@MainActivity                       // 👈 pass activity to controller
+        val activity = this@MainActivity
 
         setContent {
             GuessTheEmojiTheme {
                 val nav = rememberNavController()
-                val vm: GameViewModel = viewModel(factory = SimpleVmFactory { GameViewModel(prefs) })
+                val vm: GameViewModel =
+                    viewModel(factory = SimpleVmFactory { GameViewModel(prefs) })
 
-                // 👇 Real AdMob interstitial controller
                 val interstitial = remember { InterstitialController(activity) }
                 LaunchedEffect(Unit) { interstitial.load(activity) }
 
@@ -56,19 +53,21 @@ class MainActivity : ComponentActivity() {
                             onSettings = { nav.navigate("settings") }
                         )
                     }
+
                     composable("game") {
                         PuzzleScreen(
                             vm = vm,
-                            showInterstitial = {
+                            showInterstitial = { onDismiss ->
                                 interstitial.tryShow {
-                                    // on dismiss: mark shown and preload next
-                                    vm.onInterstitialShown(System.currentTimeMillis())
                                     interstitial.load(activity)
+                                    onDismiss()
                                 }
                             },
-                            BannerAd = { BannerAdView() }      // real banner composable
+                            bannerAd = { BannerAdView() }
                         )
+
                     }
+
                     composable("settings") {
                         SettingsScreen(
                             onBack = { nav.popBackStack() },
@@ -80,10 +79,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Initialize AdMob and force this device to receive TEST ADS.
-     * Protects you from invalid/self clicks in dev & QA, even if prod IDs slip in.
-     */
     private fun initAdsForSafeTesting(testDeviceIds: List<String>) {
         MobileAds.initialize(this)
         if (testDeviceIds.isNotEmpty()) {
@@ -94,6 +89,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 
 

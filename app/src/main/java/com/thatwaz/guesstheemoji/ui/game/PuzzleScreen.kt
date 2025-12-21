@@ -1,5 +1,6 @@
 package com.thatwaz.guesstheemoji.ui.game
 
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,7 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,18 +51,46 @@ import kotlin.random.Random
 @Composable
 fun PuzzleScreen(
     vm: GameViewModel,
-    showInterstitial: () -> Unit,
-    BannerAd: @Composable () -> Unit
+    showInterstitial: (onDismiss: () -> Unit) -> Unit,
+    bannerAd: @Composable () -> Unit
 ) {
     val s by vm.ui.collectAsState()
     val cs = MaterialTheme.colorScheme
     val typo = MaterialTheme.typography
 
-    // Interstitial after solve
-    LaunchedEffect(s.solved) {
-        if (s.solved && vm.shouldShowInterstitial(System.currentTimeMillis())) {
-            showInterstitial()
-            vm.onInterstitialShown(System.currentTimeMillis())
+    // ✅ Level-up overlay state + simple "lock" so we can't double-trigger
+    var showLevelUp by remember { mutableStateOf(false) }
+    var continueLocked by remember { mutableStateOf(false) }
+
+    // ✅ When tierUpPulse increments, open overlay and WAIT for user
+    LaunchedEffect(s.tierUpPulse) {
+        if (s.tierUpPulse > 0) {
+            showLevelUp = true
+            continueLocked = false
+        }
+    }
+
+    // ✅ Handler: user taps Continue
+    fun onContinueFromLevelUp() {
+        if (continueLocked) return
+        continueLocked = true
+
+        val now = System.currentTimeMillis()
+        val shouldAd = vm.shouldShowInterstitial(now)
+
+        if (shouldAd) {
+            // Show ad; ONLY after dismiss do we advance + mark shown
+            showInterstitial {
+                vm.onInterstitialShown(System.currentTimeMillis())
+                vm.next() // ✅ advance AFTER ad so you don't return to solved puzzle
+                showLevelUp = false
+                continueLocked = false
+            }
+        } else {
+            // No ad → just advance immediately
+            vm.next()
+            showLevelUp = false
+            continueLocked = false
         }
     }
 
@@ -78,166 +110,261 @@ fun PuzzleScreen(
     // Game Over dialog
     if (s.livesLeft <= 0) {
         GameOverDialog(
-            levelReached = s.level,
+            levelReached = s.tier,
+            puzzleReached = s.puzzleNumber,
             lastEmojis = s.emojis,
             lastAnswer = s.answer,
             onPlayAgain = { vm.next() }
         )
     }
 
-    // ✅ Explicit themed background so dark mode applies visually
-    Column(
+    // ✅ Outer box: main UI + overlay on top
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .background(cs.background)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // HUD
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Lives ${"❤️".repeat(s.livesLeft.coerceAtLeast(0))}",
-                style = typo.bodyLarge,
-                color = cs.onBackground
-            )
-            Text(
-                text = "Attempts ${s.attemptsLeft}/${Rules.MAX_ATTEMPTS}",
-                style = typo.bodyLarge,
-                color = cs.onBackground
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Centered puzzle area
-        Box(
+        // ✅ Main screen content (single column)
+        Column(
             modifier = Modifier
-                .weight(1f, fill = true)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("Level ${s.level}", style = typo.titleLarge, color = cs.onBackground)
-
-                Spacer(Modifier.height(6.dp))
-                // Category title + playful subtitle
-                Text(
-                    text = s.category.label(),
-                    style = typo.labelLarge,
-                    color = cs.primary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(2.dp))
-
-                Text(
-                    text = s.category.subtitleText(),
-                    style = typo.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(22.dp))
-
-                // Emoji line (flash on wrong)
-                FlashColor(
-                    triggerKey = s.wrong.size,
-                    baseColor = cs.onSurface
-                ) { current ->
+            // ===================== HUD =====================
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        s.emojis,
-                        style = typo.displayLarge,
-                        color = current,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        text = "Lives ${"❤️".repeat(s.livesLeft.coerceAtLeast(0))}",
+                        style = typo.bodyLarge,
+                        color = cs.onBackground
+                    )
+                    Text(
+                        text = "Score ${s.score}",
+                        style = typo.bodyLarge,
+                        color = cs.onBackground
                     )
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(4.dp))
 
-                // Masked answer (shake + flash)
-                val size = maskedTextSizeFor(s.answer)
-                FlashColor(
-                    triggerKey = s.wrong.size,
-                    baseColor = cs.onSurface
-                ) { current ->
-                    Shakable(triggerKey = s.wrong.size) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Attempts ${s.attemptsLeft}/${Rules.MAX_ATTEMPTS}",
+                        style = typo.bodyMedium,
+                        color = cs.onBackground
+                    )
+                    Text(
+                        text = "Level ${s.tier} (${s.solvesInTier}/${Rules.LEVEL_UP_EVERY_SOLVES})",
+                        style = typo.bodyMedium,
+                        color = cs.primary
+                    )
+                }
+
+                Spacer(Modifier.height(6.dp))
+
+                LinearProgressIndicator(
+                    progress = s.solvesInTier / Rules.LEVEL_UP_EVERY_SOLVES.toFloat(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = cs.primary,
+                    trackColor = cs.surfaceVariant
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // ===================== CENTER PUZZLE AREA =====================
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true) // ✅ keeps keyboard at bottom
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Puzzle ${s.puzzleNumber}",
+                        style = typo.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // ✅ category label is back
+                    Text(
+                        text = s.category.label(),
+                        style = typo.labelLarge,
+                        color = cs.primary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(2.dp))
+
+                    Text(
+                        text = s.category.subtitleText(),
+                        style = typo.bodySmall,
+                        color = cs.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(22.dp))
+
+                    FlashColor(
+                        triggerKey = s.wrong.size,
+                        baseColor = cs.onSurface
+                    ) { current ->
                         Text(
-                            spacedByWord(s.masked, s.answer),
-                            fontSize = size,
-                            lineHeight = (size.value * 1.2f).sp,
+                            text = s.emojis,
+                            style = typo.displayLarge,
                             color = current,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    val size = maskedTextSizeFor(s.answer)
+                    FlashColor(
+                        triggerKey = s.wrong.size,
+                        baseColor = cs.onSurface
+                    ) { current ->
+                        Shakable(triggerKey = s.wrong.size) {
+                            Text(
+                                text = spacedByWord(s.masked, s.answer),
+                                fontSize = size,
+                                lineHeight = (size.value * 1.2f).sp,
+                                color = current,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    SolvedCelebration(visible = s.solved)
+
+                    if (s.wrong.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "Wrong: ${s.wrong.sorted().joinToString(" ").uppercase()}",
+                            color = cs.error,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                // 🌟 Tiny celebration when solved
-                SolvedCelebration(visible = s.solved)
+                ConfettiBurst(visible = s.solved)
+            }
 
-                if (s.wrong.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Wrong: ${s.wrong.sorted().joinToString(" ").uppercase()}",
-                        color = cs.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            // ===================== KEYBOARD + ACTIONS =====================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                HangmanKeyboard(
+                    guessed = s.guessed,
+                    wrong = s.wrong,
+                    enabled = (s.livesLeft > 0) && !s.solved && !s.failed && !showLevelUp
+                ) { vm.onLetterTap(it) }
+
+                Spacer(Modifier.height(12.dp))
+
+                // ✅ When level-up overlay is showing, hide Next buttons (overlay controls flow)
+                if (!showLevelUp) {
+                    when {
+                        s.solved -> Button(
+                            onClick = { vm.next() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Next") }
+
+                        s.failed && s.livesLeft > 0 -> Button(
+                            onClick = { vm.next() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Next") }
+                    }
                 }
             }
 
-            // 🎉 Confetti over the puzzle area when solved
-            ConfettiBurst(visible = s.solved)
+            // ===================== BANNER AD =====================
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+            ) { bannerAd() }
         }
 
-
-        // Keyboard + actions
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // 👉 Make sure HangmanKeyboard uses cs.* colors internally (see note below)
-            HangmanKeyboard(
-                guessed = s.guessed,
-                wrong = s.wrong,
-                enabled = (s.livesLeft > 0) && !s.solved && !s.failed
-            ) { vm.onLetterTap(it) }
-
-            Spacer(Modifier.height(12.dp))
-            when {
-                s.solved -> Button(
-                    onClick = { vm.next() },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Next") }
-
-                s.failed && s.livesLeft > 0 -> Button(
-                    onClick = { vm.next() },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Next") }
-            }
-        }
-
-        // Ad slot
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-        ) { BannerAd() }
+        // ✅ Overlay drawn above everything
+        LevelUpOverlay(
+            visible = showLevelUp,
+            level = s.tier,
+            onContinue = ::onContinueFromLevelUp,
+            continueEnabled = !continueLocked
+        )
     }
 }
+
+
+
+
+//@Composable
+//private fun LevelUpOverlay(
+//    visible: Boolean,
+//    level: Int,
+//    modifier: Modifier = Modifier
+//) {
+//    if (!visible) return
+//
+//    val scale = remember { Animatable(0.85f) }
+//    val alpha = remember { Animatable(0f) }
+//
+//    LaunchedEffect(Unit) {
+//        scale.snapTo(0.85f)
+//        alpha.snapTo(0f)
+//        alpha.animateTo(1f, animationSpec = tween(180))
+//        scale.animateTo(1.05f, animationSpec = tween(220))
+//        scale.animateTo(1.0f, animationSpec = tween(120))
+//    }
+//
+//    Box(
+//        modifier = modifier
+//            .fillMaxSize()
+//            .background(Color.Black.copy(alpha = 0.55f)),
+//        contentAlignment = Alignment.Center
+//    ) {
+//        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+//            Text(
+//                text = "LEVEL UP!",
+//                style = MaterialTheme.typography.headlineMedium,
+//                color = Color.White
+//            )
+//            Spacer(Modifier.height(8.dp))
+//            Text(
+//                text = "Level $level",
+//                style = MaterialTheme.typography.titleLarge,
+//                color = Color.White
+//            )
+//        }
+//    }
+//}
+
 
 
 
@@ -407,6 +534,7 @@ fun Category.subtitleText(): String = when (this) {
 @Composable
 private fun GameOverDialog(
     levelReached: Int,
+    puzzleReached: Int,
     lastEmojis: String,
     lastAnswer: String,
     onPlayAgain: () -> Unit
