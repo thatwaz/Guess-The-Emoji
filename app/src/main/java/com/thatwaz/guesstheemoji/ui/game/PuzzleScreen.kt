@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thatwaz.guesstheemoji.data.Category
 import com.thatwaz.guesstheemoji.domain.Rules
+import kotlin.random.Random
 
 @Composable
 fun PuzzleScreen(
@@ -61,8 +64,16 @@ fun PuzzleScreen(
 
     // Haptics
     val haptic = LocalHapticFeedback.current
-    LaunchedEffect(s.wrong.size) { if (s.wrong.isNotEmpty()) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
-    LaunchedEffect(s.solved)      { if (s.solved)           haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+    LaunchedEffect(s.wrong.size) {
+        if (s.wrong.isNotEmpty()) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
+    LaunchedEffect(s.solved) {
+        if (s.solved) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+    }
 
     // Game Over dialog
     if (s.livesLeft <= 0) {
@@ -136,7 +147,6 @@ fun PuzzleScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-
                 Spacer(Modifier.height(22.dp))
 
                 // Emoji line (flash on wrong)
@@ -173,6 +183,9 @@ fun PuzzleScreen(
                     }
                 }
 
+                // 🌟 Tiny celebration when solved
+                SolvedCelebration(visible = s.solved)
+
                 if (s.wrong.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -183,7 +196,11 @@ fun PuzzleScreen(
                     )
                 }
             }
+
+            // 🎉 Confetti over the puzzle area when solved
+            ConfettiBurst(visible = s.solved)
         }
+
 
         // Keyboard + actions
         Column(
@@ -315,6 +332,50 @@ private fun FlashColor(
     content(current)
 }
 
+/* ====================== Tiny Solved Celebration ====================== */
+
+@Composable
+private fun SolvedCelebration(visible: Boolean) {
+    if (!visible) return
+
+    val scale = remember { Animatable(0.8f) }
+    val alpha = remember { Animatable(0f) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            scale.snapTo(0.8f)
+            alpha.snapTo(0f)
+            scale.animateTo(1.05f, tween(durationMillis = 220))
+            scale.animateTo(1.0f, tween(durationMillis = 120))
+            alpha.animateTo(1f, tween(durationMillis = 220))
+        } else {
+            alpha.snapTo(0f)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .padding(top = 10.dp)
+            .graphicsLayer {
+                this.scaleX = scale.value
+                this.scaleY = scale.value
+                this.alpha = alpha.value
+            }
+            .background(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(999.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Nice! Puzzle solved 🎉",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    }
+}
+
 /* ====================== Labels ====================== */
 
 private fun Category.label(): String = when (this) {
@@ -323,7 +384,7 @@ private fun Category.label(): String = when (this) {
     Category.SONGS_MUSIC    -> "Songs & Music"
     Category.PHRASES_IDIOMS -> "Phrases / Misc"
     Category.ANIMALS_NATURE -> "Animals & Nature"
-    Category.CRAZY_COMBOS -> "Crazy Nonsense Combos"
+    Category.CRAZY_COMBOS   -> "Crazy Nonsense Combos"
 }
 
 fun Category.subtitleText(): String = when (this) {
@@ -370,6 +431,61 @@ private fun GameOverDialog(
         }
     )
 }
+
+/* ====================== Confetti Burst ====================== */
+
+@Composable
+private fun ConfettiBurst(visible: Boolean) {
+    if (!visible) return
+
+    // Create a bunch of particles once
+    val particles = remember { List(40) { ConfettiParticle() } }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        particles.forEach { it.Draw() }
+    }
+}
+
+private class ConfettiParticle {
+    private val startX = Random.nextFloat()          // 0..1 across screen width
+    private val duration = (1200..2200).random()     // ms
+    private val sizeDp = (4..10).random().dp
+    private val color = Color(
+        Random.nextFloat(),
+        Random.nextFloat(),
+        Random.nextFloat(),
+        1f
+    )
+
+    private val offsetY = Animatable(-0.2f)          // start slightly above view
+
+    @Composable
+    fun Draw() {
+        val density = LocalDensity.current
+        val sizePx = with(density) { sizeDp.toPx() }
+
+        LaunchedEffect(Unit) {
+            // Drop from top to bottom once per solve
+            offsetY.snapTo(-0.2f)
+            offsetY.animateTo(
+                targetValue = 1.2f,
+                animationSpec = tween(durationMillis = duration)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .graphicsLayer {
+                    translationX = startX * 900f - sizePx / 2f
+                    translationY = offsetY.value * 1600f - sizePx / 2f
+                }
+                .size(sizeDp)
+                .background(color, RoundedCornerShape(2.dp))
+        )
+    }
+}
+
+
 
 
 
