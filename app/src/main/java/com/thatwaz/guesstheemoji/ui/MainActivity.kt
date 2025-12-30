@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -18,6 +20,7 @@ import com.thatwaz.guesstheemoji.ui.ads.BannerAdView
 import com.thatwaz.guesstheemoji.ui.ads.InterstitialController
 import com.thatwaz.guesstheemoji.ui.game.GameViewModel
 import com.thatwaz.guesstheemoji.ui.game.PuzzleScreen
+import com.thatwaz.guesstheemoji.ui.game.ScoresScreen
 import com.thatwaz.guesstheemoji.ui.home.HomeScreen
 import com.thatwaz.guesstheemoji.ui.settings.SettingsScreen
 import com.thatwaz.guesstheemoji.ui.theme.GuessTheEmojiTheme
@@ -43,16 +46,59 @@ class MainActivity : ComponentActivity() {
                 val vm: GameViewModel =
                     viewModel(factory = SimpleVmFactory { GameViewModel(prefs) })
 
-                val interstitial = remember { InterstitialController(activity) }
+                // safer: tie remember to the activity instance
+                val interstitial = remember(activity) { InterstitialController(activity) }
                 LaunchedEffect(Unit) { interstitial.load(activity) }
 
                 NavHost(navController = nav, startDestination = "home") {
+
                     composable("home") {
+                        val s by vm.ui.collectAsState()
+
                         HomeScreen(
-                            onPlay = { nav.navigate("game") },
+                            hasActiveRun = s.hasActiveRun,
+
+                            onContinue = {
+                                vm.continueGame()
+                                nav.navigate("game")
+                            },
+
+                            onNewGame = {
+                                vm.startNewRun()          // ✅ use startNewRun (immediate in-memory reset)
+                                nav.navigate("game") {
+                                    launchSingleTop = true
+                                }
+                            },
+
+                            onScores = { nav.navigate("scores") },
                             onSettings = { nav.navigate("settings") }
                         )
                     }
+
+
+                    composable("scores") {
+                        ScoresScreen(
+                            prefs = prefs,
+                            onBack = { nav.popBackStack() },
+                            onHome = {
+                                nav.navigate("home") {
+                                    popUpTo("home") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            },
+                            onPlayAgain = {
+                                vm.startNewRun() // ✅ reshuffles + resets run state (make sure it clears order)
+                                nav.navigate("game") {
+                                    popUpTo("scores") { inclusive = true } // removes scores from back stack
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
+
+
+
+
 
                     composable("game") {
                         PuzzleScreen(
@@ -63,9 +109,9 @@ class MainActivity : ComponentActivity() {
                                     onDismiss()
                                 }
                             },
-                            bannerAd = { BannerAdView() }
+                            bannerAd = { BannerAdView() },
+                            onShowScores = { nav.navigate("scores") }
                         )
-
                     }
 
                     composable("settings") {
@@ -79,6 +125,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Initialize AdMob and force this device to receive TEST ADS.
+     * Protects you from invalid/self clicks in dev & QA, even if prod IDs slip in.
+     */
     private fun initAdsForSafeTesting(testDeviceIds: List<String>) {
         MobileAds.initialize(this)
         if (testDeviceIds.isNotEmpty()) {

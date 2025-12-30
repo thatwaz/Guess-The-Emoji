@@ -52,7 +52,8 @@ import kotlin.random.Random
 fun PuzzleScreen(
     vm: GameViewModel,
     showInterstitial: (onDismiss: () -> Unit) -> Unit,
-    bannerAd: @Composable () -> Unit
+    bannerAd: @Composable () -> Unit,
+    onShowScores: () -> Unit //
 ) {
     val s by vm.ui.collectAsState()
     val cs = MaterialTheme.colorScheme
@@ -69,6 +70,14 @@ fun PuzzleScreen(
             continueLocked = false
         }
     }
+
+    // ✅ When a run ends, navigate to Scores screen
+//    LaunchedEffect(s.gameOverPulse) {
+//        if (s.gameOverPulse > 0) {
+//            onShowScores()
+//        }
+//    }
+
 
     // ✅ Handler: user taps Continue
     fun onContinueFromLevelUp() {
@@ -108,15 +117,20 @@ fun PuzzleScreen(
     }
 
     // Game Over dialog
+// Only show dialog if you WANT it and the run hasn't already triggered navigation
     if (s.livesLeft <= 0) {
         GameOverDialog(
             levelReached = s.tier,
             puzzleReached = s.puzzleNumber,
             lastEmojis = s.emojis,
             lastAnswer = s.answer,
-            onPlayAgain = { vm.next() }
+            onPlayAgain = { vm.startNewRun() },
+            onViewScores = { onShowScores() }
         )
     }
+
+
+
 
     // ✅ Outer box: main UI + overlay on top
     Box(
@@ -537,7 +551,8 @@ private fun GameOverDialog(
     puzzleReached: Int,
     lastEmojis: String,
     lastAnswer: String,
-    onPlayAgain: () -> Unit
+    onPlayAgain: () -> Unit,
+    onViewScores: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = { /* keep explicit */ },
@@ -547,13 +562,21 @@ private fun GameOverDialog(
                 Text("You ran out of lives.")
                 Spacer(Modifier.height(8.dp))
                 Text("Level reached: $levelReached")
+                Spacer(Modifier.height(6.dp))
+                Text("Puzzle reached: $puzzleReached")
                 Spacer(Modifier.height(12.dp))
-                // Show the last missed puzzle so it isn’t hidden behind the dialog
                 Text(text = lastEmojis, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(6.dp))
                 Text(text = "Answer: $lastAnswer")
             }
         },
+
+        // ✅ Left-side / secondary button
+        dismissButton = {
+            TextButton(onClick = onViewScores) { Text("View Scores") }
+        },
+
+        // ✅ Right-side / primary button
         confirmButton = {
             TextButton(onClick = onPlayAgain) { Text("Play Again") }
         }

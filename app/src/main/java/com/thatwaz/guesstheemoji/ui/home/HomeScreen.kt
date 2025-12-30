@@ -2,6 +2,7 @@ package com.thatwaz.guesstheemoji.ui.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -34,27 +35,31 @@ import com.thatwaz.guesstheemoji.R
 
 @Composable
 fun HomeScreen(
-    onPlay: () -> Unit,
+    hasActiveRun: Boolean,
+    onContinue: () -> Unit,
+    onNewGame: () -> Unit,
+    onScores: () -> Unit,
     onSettings: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = isSystemInDarkTheme()
 
-    // Background gradient adapts to theme
     val bg = if (isDark) {
         Brush.verticalGradient(listOf(cs.surface, cs.background))
     } else {
         Brush.verticalGradient(listOf(cs.surfaceVariant.copy(alpha = 0.4f), cs.surface))
     }
 
-    // Tilted “card” frame gradient (fun but readable in dark)
     val frameGradient = if (isDark) {
         Brush.linearGradient(
             listOf(cs.primary.copy(alpha = 0.35f), cs.secondary.copy(alpha = 0.35f))
         )
     } else {
         Brush.linearGradient(
-            listOf(cs.secondaryContainer.copy(alpha = 0.55f), cs.primaryContainer.copy(alpha = 0.55f))
+            listOf(
+                cs.secondaryContainer.copy(alpha = 0.55f),
+                cs.primaryContainer.copy(alpha = 0.55f)
+            )
         )
     }
 
@@ -72,7 +77,6 @@ fun HomeScreen(
                     .align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Title picks up primary (auto-contrasts in dark)
                 Text(
                     text = "Guess The Emoji",
                     style = MaterialTheme.typography.headlineLarge.copy(
@@ -85,7 +89,6 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                // Tilted postcard card (no cropping; comfy padding)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(0.80f)
@@ -105,13 +108,12 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(16.dp)),
-                        contentScale = ContentScale.Fit  // avoids clipping emojis
+                        contentScale = ContentScale.Fit
                     )
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                // Subtitle uses secondary for a nice accent in both themes
                 Text(
                     text = "Fun Emoji Brain Teaser Game",
                     style = MaterialTheme.typography.titleMedium.copy(
@@ -123,12 +125,32 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(28.dp))
 
-                Button(
-                    onClick = onPlay,
-                    shape = RoundedCornerShape(999.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("▶ Play", style = MaterialTheme.typography.titleMedium)
+                if (hasActiveRun) {
+                    Button(
+                        onClick = onContinue,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("▶ Resume Game", style = MaterialTheme.typography.titleMedium)
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onNewGame,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("🆕 New Game", style = MaterialTheme.typography.titleMedium)
+                    }
+                } else {
+                    Button(
+                        onClick = onNewGame,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("▶ Play", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -140,10 +162,23 @@ fun HomeScreen(
                 ) {
                     Text("⚙ Settings", style = MaterialTheme.typography.titleMedium)
                 }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onScores,
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🏆 Scores", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
     }
 }
+
+
+
 
 
 

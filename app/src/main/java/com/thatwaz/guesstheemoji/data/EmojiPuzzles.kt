@@ -83,7 +83,7 @@ object EmojiPuzzles {
         EmojiPuzzle("📓❤️", "The Notebook", Category.MOVIES_TV),
         EmojiPuzzle("🏠👦", "Home Alone", Category.MOVIES_TV),
         EmojiPuzzle("🤺🏛️", "Gladiator", Category.MOVIES_TV),
-        EmojiPuzzle("3️⃣0️⃣0️⃣🛡️", "300", Category.MOVIES_TV),
+//        EmojiPuzzle("3️⃣0️⃣0️⃣🛡️", "300", Category.MOVIES_TV),
         EmojiPuzzle("🚗🔥🏜️", "Mad Max: Fury Road", Category.MOVIES_TV),
         EmojiPuzzle("🏜️🪱", "Dune", Category.MOVIES_TV),
         EmojiPuzzle("✈️😎", "Top Gun", Category.MOVIES_TV),
