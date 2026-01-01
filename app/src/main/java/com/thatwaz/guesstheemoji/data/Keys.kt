@@ -25,6 +25,10 @@ object Keys {
     val PUZZLE_POS = intPreferencesKey("puzzle_deck_pos")
     val RUN_START_POS = intPreferencesKey("run_start_pos")
     val THEME_MODE = intPreferencesKey("theme_mode") // 0=system, 1=light, 2=dark
+    val SCORE = intPreferencesKey("score")
+    val TIER = intPreferencesKey("tier")
+    val SOLVES_IN_TIER = intPreferencesKey("solves_in_tier")
+    val TIER_UP_PULSE = intPreferencesKey("tier_up_pulse")
 
 
 }
@@ -42,6 +46,10 @@ class Prefs(val ctx: Context) {
     suspend fun setRunStartPos(pos: Int) = edit { it[Keys.RUN_START_POS] = pos }
 
     suspend fun setThemeMode(mode: Int) = ctx.ds.edit { it[Keys.THEME_MODE] = mode }
+    suspend fun setScore(v: Int) = ctx.ds.edit { it[Keys.SCORE] = v }
+    suspend fun setTier(v: Int) = ctx.ds.edit { it[Keys.TIER] = v }
+    suspend fun setSolvesInTier(v: Int) = ctx.ds.edit { it[Keys.SOLVES_IN_TIER] = v }
+    suspend fun setTierUpPulse(v: Int) = ctx.ds.edit { it[Keys.TIER_UP_PULSE] = v }
 
 
 
@@ -64,6 +72,14 @@ class Prefs(val ctx: Context) {
         it[Keys.LAST_INT_AT] = 0L
         // leave ADS_REMOVED alone
     }
+
+    suspend fun resetProgression() = ctx.ds.edit {
+        it[Keys.SCORE] = 0
+        it[Keys.TIER] = 1
+        it[Keys.SOLVES_IN_TIER] = 0
+        it[Keys.TIER_UP_PULSE] = 0
+    }
+
 
 
 

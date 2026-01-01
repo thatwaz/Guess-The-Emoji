@@ -60,13 +60,12 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     private val scoreStore = ScoreStore(prefs)
 
 
-
-
     init {
         viewModelScope.launch {
             val p = prefs.flow.firstOrNull()
 
-            val level = p?.get(Keys.LEVEL) ?: 1
+            // ----- persisted run state -----
+            val puzzleNumber = p?.get(Keys.LEVEL) ?: 1
             val hasActiveRun = p?.get(Keys.HAS_ACTIVE_RUN) ?: false
             val attempts = p?.get(Keys.ATTEMPTS) ?: Rules.MAX_ATTEMPTS
             val lives = p?.get(Keys.LIVES) ?: Rules.ARCADE_LIVES
@@ -74,7 +73,13 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             val solvedSince = p?.get(Keys.SOLVED_SINCE_INT) ?: 0
             val lastInt = p?.get(Keys.LAST_INT_AT) ?: 0L
 
-            // ✅ OPTION B: load persisted deck state
+            // ----- NEW: progression -----
+            val score = p?.get(Keys.SCORE) ?: 0
+            val tier = p?.get(Keys.TIER) ?: 1
+            val solvesInTier = p?.get(Keys.SOLVES_IN_TIER) ?: 0
+
+
+            // ----- deck state -----
             val puzzleCount = EmojiPuzzles.puzzles.size
             val deckCsv = p?.get(Keys.PUZZLE_DECK) ?: ""
             val savedPos = p?.get(Keys.PUZZLE_POS) ?: 0
@@ -84,24 +89,33 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             deckPos = savedPos
             runStartPos = savedRunStart
 
-            // ✅ Fix invalid/missing deck (first install or puzzle list changed)
-            if (puzzleCount == 0) {
-                // nothing to load; keep defaults
-            } else if (deck.size != puzzleCount) {
+            if (puzzleCount > 0 && deck.size != puzzleCount) {
                 deck = buildDeck(puzzleCount)
                 deckPos = 0
                 runStartPos = 0
-
                 prefs.setPuzzleDeckCsv(deck.toCsv())
                 prefs.setPuzzlePos(0)
                 prefs.setRunStartPos(0)
             }
 
-            // ✅ now load the current puzzle into UI state
-            loadLevel(level, attempts, lives, adsRemoved, solvedSince, lastInt)
+            // ✅ APPLY progression FIRST
+            _ui.value = _ui.value.copy(
+                score = score,
+                tier = tier,
+                solvesInTier = solvesInTier,
 
-            // ✅ restore run flag
-            _ui.value = _ui.value.copy(hasActiveRun = hasActiveRun)
+                hasActiveRun = hasActiveRun
+            )
+
+            // ✅ THEN load puzzle/round
+            loadLevel(
+                puzzleNumber = puzzleNumber,
+                attempts = attempts,
+                lives = lives,
+                adsRemoved = adsRemoved,
+                solvedSince = solvedSince,
+                lastInt = lastInt
+            )
         }
     }
 
@@ -188,9 +202,8 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     }
 
 
-
-    private fun isRevealable(c:Char)= c.isLetter()
-    private fun mask(answer:String, guessed:Set<Char>) =
+    private fun isRevealable(c: Char) = c.isLetter()
+    private fun mask(answer: String, guessed: Set<Char>) =
         answer.map { ch ->
             when {
                 !isRevealable(ch) -> ch
@@ -207,7 +220,7 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
         solvedSince: Int,
         lastInt: Long
     ) {
-        val safePuzzleNumber = kotlin.math.max(1, puzzleNumber)
+        val safePuzzleNumber = puzzleNumber.coerceAtLeast(1)
         val p = puzzleFor(safePuzzleNumber)
 
         val safeAttempts = if (attempts <= 0) Rules.MAX_ATTEMPTS else attempts
@@ -218,18 +231,24 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             viewModelScope.launch { prefs.setLives(targetLives) }
         }
 
-        // ✅ Preserve progression fields from current state
         val prev = _ui.value
 
         _ui.value = prev.copy(
-            // ✅ progression / meta
-            level = prev.level,
+            // ✅ keep "level" and "puzzleNumber" aligned (LEVEL is being used as puzzleNumber)
+            level = safePuzzleNumber,
             puzzleNumber = safePuzzleNumber,
+
+            // ✅ preserve progression across puzzle loads
             score = prev.score,
+            tier = prev.tier,
+            solvesInTier = prev.solvesInTier,
+            tierUpPulse = prev.tierUpPulse,
+
+            // (legacy fields - keep if still used)
             solvesInLevel = prev.solvesInLevel,
             levelUpPulse = prev.levelUpPulse,
 
-            // ✅ IMPORTANT: preserve run state
+            // ✅ preserve run state
             hasActiveRun = prev.hasActiveRun,
 
             // ✅ persisted flags/counters
@@ -251,11 +270,7 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             solved = false,
             failed = false
         )
-
     }
-
-
-
 
 
     // Go to a specific puzzleNumber with attempts/lives (+ run state)
@@ -284,9 +299,6 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             _ui.value = _ui.value.copy(hasActiveRun = hasActiveRun)
         }
     }
-
-
-
 
 
     fun onLetterTap(ch: Char) {
@@ -326,7 +338,6 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             return
         }
 
-
         // ✅ SOLVED
         val points = 100 + if (s.wrong.isEmpty()) 25 else 0
 
@@ -336,7 +347,7 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
         val nextSolvesInTier = if (tierUp) 0 else newSolvesInTier
         val nextPulse = if (tierUp) s.tierUpPulse + 1 else s.tierUpPulse
 
-        _ui.value = s.copy(
+        val updated = s.copy(
             masked = newMasked,
             guessed = newGuessed,
             solved = true,
@@ -347,13 +358,38 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             tierUpPulse = nextPulse,
 
             solvedSinceInt = s.solvedSinceInt + 1
-
             // ❌ DO NOT change puzzleNumber here
         )
 
+        _ui.value = updated
+
         viewModelScope.launch {
+            // keep your existing behavior
             prefs.incSolvedSinceInt()
             prefs.setAttempts(Rules.MAX_ATTEMPTS)
+
+            // ✅ persist progression so Resume works after restart
+            prefs.setScore(updated.score)
+            prefs.setTier(updated.tier)
+            prefs.setSolvesInTier(updated.solvesInTier)
+            prefs.setTierUpPulse(updated.tierUpPulse)
+        }
+
+
+
+
+    viewModelScope.launch {
+            prefs.incSolvedSinceInt()
+            prefs.setAttempts(Rules.MAX_ATTEMPTS)
+
+            // ✅ NEW: persist progression so Resume works after app restart
+            prefs.setScore(updated.score)
+            prefs.setTier(updated.tier)
+            prefs.setSolvesInTier(updated.solvesInTier)
+            prefs.setTierUpPulse(updated.tierUpPulse)
+
+            // optional but recommended: keep your saved "level" aligned to puzzleNumber
+            prefs.setLevel(updated.puzzleNumber)
         }
 
     }
@@ -563,15 +599,30 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     fun shouldShowInterstitial(now: Long): Boolean {
         val s = _ui.value
         if (s.adsRemoved) return false
+
+        // ✅ only after every 4 solves
+        if (s.solvedSinceInt < Rules.LEVEL_UP_EVERY_SOLVES) return false
+
+        // ✅ cooldown
         if (now - s.lastIntAt < Rules.INTERSTITIAL_MIN_MS) return false
+
         return true
     }
 
+
     fun onInterstitialShown(now: Long) {
         val s = _ui.value
-        _ui.value = s.copy(lastIntAt = now)
-        viewModelScope.launch { prefs.setLastIntAt(now) }
+        _ui.value = s.copy(
+            lastIntAt = now,
+            solvedSinceInt = 0 // ✅ reset after ad
+        )
+
+        viewModelScope.launch {
+            prefs.setLastIntAt(now)
+            prefs.resetSolvedSinceInt()
+        }
     }
+
 
     private fun endRunAndSaveScore(s: GameState) {
         // prevent duplicates if UI triggers multiple times
