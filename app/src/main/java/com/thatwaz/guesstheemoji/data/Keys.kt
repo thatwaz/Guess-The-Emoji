@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.thatwaz.guesstheemoji.domain.Rules
 import kotlinx.coroutines.flow.map
@@ -20,6 +21,11 @@ object Keys {
     val SOLVED_SINCE_INT = intPreferencesKey("solved_since_int")
     val LAST_INT_AT = longPreferencesKey("last_int_at")
     val HAS_ACTIVE_RUN = booleanPreferencesKey("has_active_run")
+    val PUZZLE_DECK = stringPreferencesKey("puzzle_deck_csv")
+    val PUZZLE_POS = intPreferencesKey("puzzle_deck_pos")
+    val RUN_START_POS = intPreferencesKey("run_start_pos")
+    val THEME_MODE = intPreferencesKey("theme_mode") // 0=system, 1=light, 2=dark
+
 
 }
 
@@ -30,6 +36,14 @@ class Prefs(val ctx: Context) {
     suspend fun setAttempts(v: Int) = ctx.ds.edit { it[Keys.ATTEMPTS] = v }
     suspend fun setLives(v: Int) = ctx.ds.edit { it[Keys.LIVES] = v }
     suspend fun setAdsRemoved(v: Boolean) = ctx.ds.edit { it[Keys.ADS_REMOVED] = v }
+
+    suspend fun setPuzzleDeckCsv(csv: String) = edit { it[Keys.PUZZLE_DECK] = csv }
+    suspend fun setPuzzlePos(pos: Int) = edit { it[Keys.PUZZLE_POS] = pos }
+    suspend fun setRunStartPos(pos: Int) = edit { it[Keys.RUN_START_POS] = pos }
+
+    suspend fun setThemeMode(mode: Int) = ctx.ds.edit { it[Keys.THEME_MODE] = mode }
+
+
 
     suspend fun incSolvedSinceInt() = ctx.ds.edit {
         it[Keys.SOLVED_SINCE_INT] = (it[Keys.SOLVED_SINCE_INT] ?: 0) + 1

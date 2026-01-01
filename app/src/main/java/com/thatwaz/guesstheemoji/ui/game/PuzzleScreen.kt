@@ -32,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,18 +47,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.thatwaz.guesstheemoji.data.Category
 import com.thatwaz.guesstheemoji.domain.Rules
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.random.Random
+
 
 @Composable
 fun PuzzleScreen(
     vm: GameViewModel,
     showInterstitial: (onDismiss: () -> Unit) -> Unit,
     bannerAd: @Composable () -> Unit,
-    onShowScores: () -> Unit //
+    onShowScores: () -> Unit,
+    onShowHome: () -> Unit
 ) {
     val s by vm.ui.collectAsState()
     val cs = MaterialTheme.colorScheme
     val typo = MaterialTheme.typography
+    val scope = rememberCoroutineScope()
+
 
     // ✅ Level-up overlay state + simple "lock" so we can't double-trigger
     var showLevelUp by remember { mutableStateOf(false) }
@@ -71,13 +78,6 @@ fun PuzzleScreen(
         }
     }
 
-    // ✅ When a run ends, navigate to Scores screen
-//    LaunchedEffect(s.gameOverPulse) {
-//        if (s.gameOverPulse > 0) {
-//            onShowScores()
-//        }
-//    }
-
 
     // ✅ Handler: user taps Continue
     fun onContinueFromLevelUp() {
@@ -88,20 +88,35 @@ fun PuzzleScreen(
         val shouldAd = vm.shouldShowInterstitial(now)
 
         if (shouldAd) {
+            var finished = false
+
+            // ✅ SAFETY: if the ad never calls back, don't freeze
+            scope.launch {
+                delay(1500)
+                if (!finished) {
+                    vm.next()
+                    showLevelUp = false
+                    continueLocked = false
+                }
+            }
+
             // Show ad; ONLY after dismiss do we advance + mark shown
             showInterstitial {
+                if (finished) return@showInterstitial
+                finished = true
+
                 vm.onInterstitialShown(System.currentTimeMillis())
-                vm.next() // ✅ advance AFTER ad so you don't return to solved puzzle
+                vm.next()
                 showLevelUp = false
                 continueLocked = false
             }
         } else {
-            // No ad → just advance immediately
             vm.next()
             showLevelUp = false
             continueLocked = false
         }
     }
+
 
     // Haptics
     val haptic = LocalHapticFeedback.current
@@ -125,7 +140,12 @@ fun PuzzleScreen(
             lastEmojis = s.emojis,
             lastAnswer = s.answer,
             onPlayAgain = { vm.startNewRun() },
-            onViewScores = { onShowScores() }
+            onViewScores = { onShowScores() },
+            onQuit = {
+                // end run cleanly + go home
+                vm.quitToHome()
+                onShowHome()      // navigate to home
+            }
         )
     }
 
@@ -186,12 +206,12 @@ fun PuzzleScreen(
                 Spacer(Modifier.height(6.dp))
 
                 LinearProgressIndicator(
-                    progress = s.solvesInTier / Rules.LEVEL_UP_EVERY_SOLVES.toFloat(),
+                    progress = { s.solvesInTier / Rules.LEVEL_UP_EVERY_SOLVES.toFloat() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp),
                     color = cs.primary,
-                    trackColor = cs.surfaceVariant
+                    trackColor = cs.surfaceVariant,
                 )
             }
 
@@ -230,7 +250,7 @@ fun PuzzleScreen(
 
                     Text(
                         text = s.category.subtitleText(),
-                        style = typo.bodySmall,
+                        style = typo.bodyMedium,
                         color = cs.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
@@ -334,50 +354,6 @@ fun PuzzleScreen(
         )
     }
 }
-
-
-
-
-//@Composable
-//private fun LevelUpOverlay(
-//    visible: Boolean,
-//    level: Int,
-//    modifier: Modifier = Modifier
-//) {
-//    if (!visible) return
-//
-//    val scale = remember { Animatable(0.85f) }
-//    val alpha = remember { Animatable(0f) }
-//
-//    LaunchedEffect(Unit) {
-//        scale.snapTo(0.85f)
-//        alpha.snapTo(0f)
-//        alpha.animateTo(1f, animationSpec = tween(180))
-//        scale.animateTo(1.05f, animationSpec = tween(220))
-//        scale.animateTo(1.0f, animationSpec = tween(120))
-//    }
-//
-//    Box(
-//        modifier = modifier
-//            .fillMaxSize()
-//            .background(Color.Black.copy(alpha = 0.55f)),
-//        contentAlignment = Alignment.Center
-//    ) {
-//        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//            Text(
-//                text = "LEVEL UP!",
-//                style = MaterialTheme.typography.headlineMedium,
-//                color = Color.White
-//            )
-//            Spacer(Modifier.height(8.dp))
-//            Text(
-//                text = "Level $level",
-//                style = MaterialTheme.typography.titleLarge,
-//                color = Color.White
-//            )
-//        }
-//    }
-//}
 
 
 
@@ -552,10 +528,11 @@ private fun GameOverDialog(
     lastEmojis: String,
     lastAnswer: String,
     onPlayAgain: () -> Unit,
-    onViewScores: () -> Unit
+    onViewScores: () -> Unit,
+    onQuit: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = { /* keep explicit */ },
+        onDismissRequest = { /* explicit */ },
         title = { Text("Game Over") },
         text = {
             Column {
@@ -568,22 +545,34 @@ private fun GameOverDialog(
                 Text(text = lastEmojis, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(6.dp))
                 Text(text = "Answer: $lastAnswer")
+
+                Spacer(Modifier.height(16.dp))
+
+                // ✅ Tertiary action
+                TextButton(
+                    onClick = onQuit,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Quit to Home")
+                }
             }
         },
 
-        // ✅ Left-side / secondary button
         dismissButton = {
-            TextButton(onClick = onViewScores) { Text("View Scores") }
+            TextButton(onClick = onViewScores) {
+                Text("View Scores")
+            }
         },
 
-        // ✅ Right-side / primary button
         confirmButton = {
-            TextButton(onClick = onPlayAgain) { Text("Play Again") }
+            TextButton(onClick = onPlayAgain) {
+                Text("Play Again")
+            }
         }
     )
 }
 
-/* ====================== Confetti Burst ====================== */
+    /* ====================== Confetti Burst ====================== */
 
 @Composable
 private fun ConfettiBurst(visible: Boolean) {

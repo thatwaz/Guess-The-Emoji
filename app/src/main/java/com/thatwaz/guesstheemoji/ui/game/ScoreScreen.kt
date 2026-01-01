@@ -378,12 +378,15 @@ private fun formatDateTime(epochMs: Long): String {
 }
 
 private fun shareScore(context: Context, entry: ScoreEntry) {
+    val packageName = context.packageName
+    val appLink = "https://play.google.com/store/apps/details?id=$packageName"
+
     val text = buildString {
         append("I just scored ${entry.score} in Guess The Emoji! 🎉\n")
         append("Tier: ${entry.tier}\n")
-        append("Puzzle reached: ${entry.puzzleNumber}\n")
-        append("When: ${formatDateTime(entry.endedAtEpochMs)}\n\n")
-        append("Can you beat me? 😄")
+        append("Puzzle reached: ${entry.puzzleNumber}\n\n")
+        append("Can you beat me? 😄\n")
+        append(appLink)
     }
 
     val intent = Intent(Intent.ACTION_SEND).apply {
@@ -393,6 +396,7 @@ private fun shareScore(context: Context, entry: ScoreEntry) {
 
     context.startActivity(Intent.createChooser(intent, "Share your score"))
 }
+
 
 @Composable
 private fun rememberScoreStore(prefs: Prefs): ScoreStore {

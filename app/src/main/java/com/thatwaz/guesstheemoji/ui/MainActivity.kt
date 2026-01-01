@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.RequestConfiguration
+import com.thatwaz.guesstheemoji.data.Keys
 import com.thatwaz.guesstheemoji.data.Prefs
 import com.thatwaz.guesstheemoji.ui.ads.BannerAdView
 import com.thatwaz.guesstheemoji.ui.ads.InterstitialController
@@ -41,8 +42,18 @@ class MainActivity : ComponentActivity() {
         val activity = this@MainActivity
 
         setContent {
-            GuessTheEmojiTheme {
-                val nav = rememberNavController()
+            val p by prefs.flow.collectAsState(initial = null)
+            val themeMode = p?.get(Keys.THEME_MODE) ?: 0 // 0=system, 1=light, 2=dark
+
+            val forceDark: Boolean? = when (themeMode) {
+                1 -> false // force light
+                2 -> true  // force dark
+                else -> null // follow system
+            }
+
+            GuessTheEmojiTheme(forceDark = forceDark) {
+
+            val nav = rememberNavController()
                 val vm: GameViewModel =
                     viewModel(factory = SimpleVmFactory { GameViewModel(prefs) })
 
@@ -87,12 +98,14 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onPlayAgain = {
-                                vm.startNewRun() // ✅ reshuffles + resets run state (make sure it clears order)
+                                vm.startNewRun()
                                 nav.navigate("game") {
-                                    popUpTo("scores") { inclusive = true } // removes scores from back stack
+                                    popUpTo("scores") { inclusive = false }
                                     launchSingleTop = true
+                                    restoreState = false
                                 }
                             }
+
                         )
                     }
 
@@ -110,12 +123,19 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             bannerAd = { BannerAdView() },
-                            onShowScores = { nav.navigate("scores") }
+                            onShowScores = { nav.navigate("scores") },
+                            onShowHome = {
+                                nav.navigate("home") {
+                                    popUpTo("home") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
                         )
                     }
 
                     composable("settings") {
                         SettingsScreen(
+                            prefs = prefs,
                             onBack = { nav.popBackStack() },
                             onRemoveAds = { /* disabled in MVP */ }
                         )

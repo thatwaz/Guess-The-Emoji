@@ -26,12 +26,14 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun GuessTheEmojiTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = false,
+    forceDark: Boolean? = null,           // ✅ null = follow system, true/false = force
+    dynamicColor: Boolean = false,         // keep your existing option
     content: @Composable () -> Unit
 ) {
+    val darkTheme = forceDark ?: isSystemInDarkTheme()
+
     SystemBarsGuard()
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current

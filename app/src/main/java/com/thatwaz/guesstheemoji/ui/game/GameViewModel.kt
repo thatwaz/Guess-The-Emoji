@@ -1,5 +1,6 @@
 package com.thatwaz.guesstheemoji.ui.game
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thatwaz.guesstheemoji.data.Category
@@ -50,6 +51,11 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     val ui: StateFlow<GameState> = _ui
 
     private var order: List<Int> = emptyList()
+    private var orderCycle: Int = -1   // ✅ tracks which full-pass we’re on
+
+    private var deck: IntArray = intArrayOf()
+    private var deckPos: Int = 0           // global position
+    private var runStartPos: Int = 0       // position at start of this run
 
     private val scoreStore = ScoreStore(prefs)
 
@@ -59,6 +65,7 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
     init {
         viewModelScope.launch {
             val p = prefs.flow.firstOrNull()
+
             val level = p?.get(Keys.LEVEL) ?: 1
             val hasActiveRun = p?.get(Keys.HAS_ACTIVE_RUN) ?: false
             val attempts = p?.get(Keys.ATTEMPTS) ?: Rules.MAX_ATTEMPTS
@@ -67,23 +74,120 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             val solvedSince = p?.get(Keys.SOLVED_SINCE_INT) ?: 0
             val lastInt = p?.get(Keys.LAST_INT_AT) ?: 0L
 
+            // ✅ OPTION B: load persisted deck state
+            val puzzleCount = EmojiPuzzles.puzzles.size
+            val deckCsv = p?.get(Keys.PUZZLE_DECK) ?: ""
+            val savedPos = p?.get(Keys.PUZZLE_POS) ?: 0
+            val savedRunStart = p?.get(Keys.RUN_START_POS) ?: savedPos
+
+            deck = deckCsv.toIntArrayCsv()
+            deckPos = savedPos
+            runStartPos = savedRunStart
+
+            // ✅ Fix invalid/missing deck (first install or puzzle list changed)
+            if (puzzleCount == 0) {
+                // nothing to load; keep defaults
+            } else if (deck.size != puzzleCount) {
+                deck = buildDeck(puzzleCount)
+                deckPos = 0
+                runStartPos = 0
+
+                prefs.setPuzzleDeckCsv(deck.toCsv())
+                prefs.setPuzzlePos(0)
+                prefs.setRunStartPos(0)
+            }
+
+            // ✅ now load the current puzzle into UI state
             loadLevel(level, attempts, lives, adsRemoved, solvedSince, lastInt)
 
-            // ✅ THIS is the missing part
+            // ✅ restore run flag
             _ui.value = _ui.value.copy(hasActiveRun = hasActiveRun)
         }
     }
 
 
+
+    private fun buildDeck(size: Int): IntArray =
+        (0 until size).shuffled().toIntArray()
+
+    private fun IntArray.toCsv(): String = joinToString(",")
+    private fun String.toIntArrayCsv(): IntArray =
+        if (isBlank()) intArrayOf() else split(",").map { it.toInt() }.toIntArray()
+
     private fun ensureOrder() {
-        if (order.isEmpty()) order = EmojiPuzzles.puzzles.indices.shuffled()
+        if (order.isEmpty()) {
+            order = EmojiPuzzles.puzzles.indices.shuffled()
+            orderCycle = 0
+        }
     }
 
-    private fun puzzleFor(level: Int): EmojiPuzzle {
-        ensureOrder()
-        val idx = order[(level - 1).mod(order.size)]
+    private fun puzzleFor(puzzleNumber: Int): EmojiPuzzle {
+        val size = EmojiPuzzles.puzzles.size
+        if (size == 0) error("No puzzles available")
+
+        // Safety: ensure deck is valid
+        if (deck.size != size) {
+            deck = buildDeck(size)
+            deckPos = 0
+            runStartPos = 0
+            viewModelScope.launch {
+                prefs.setPuzzleDeckCsv(deck.toCsv())
+                prefs.setPuzzlePos(0)
+                prefs.setRunStartPos(0)
+            }
+        }
+
+        val zeroBased = (puzzleNumber - 1).coerceAtLeast(0)
+
+        val globalIndex = runStartPos + zeroBased
+
+        // If we passed the end, reshuffle and wrap
+        val cycle = globalIndex / size
+        val posInCycle = globalIndex % size
+
+        if (cycle > 0) {
+            // We completed at least one full deck since runStartPos
+            // Simplest: reshuffle for the new cycle and reset runStartPos inside this cycle
+            deck = buildDeck(size)
+            val newRunStart = 0
+            runStartPos = newRunStart
+
+            viewModelScope.launch {
+                prefs.setPuzzleDeckCsv(deck.toCsv())
+                prefs.setPuzzlePos(0)
+                prefs.setRunStartPos(0)
+            }
+
+            // now use posInCycle for new deck (posInCycle is still fine)
+            val idx = deck[posInCycle]
+            return EmojiPuzzles.puzzles[idx]
+        }
+
+        val idx = deck[posInCycle]
+
+        Log.d(
+            "PUZZLE_DECK",
+            "runStartPos=$runStartPos deckPos=$deckPos puzzleNumber=$puzzleNumber posInCycle=$posInCycle idx=$idx"
+        )
         return EmojiPuzzles.puzzles[idx]
     }
+
+
+    private fun updateAndPersistDeckPosFor(puzzleNumber: Int) {
+        val size = EmojiPuzzles.puzzles.size
+        if (size <= 0) return
+
+        val zeroBased = (puzzleNumber - 1).coerceAtLeast(0)
+
+        // deckPos = where we are globally right now
+        deckPos = (runStartPos + zeroBased) % size
+
+        viewModelScope.launch {
+            prefs.setPuzzlePos(deckPos)
+        }
+    }
+
+
 
     private fun isRevealable(c:Char)= c.isLetter()
     private fun mask(answer:String, guessed:Set<Char>) =
@@ -166,6 +270,8 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             prefs.setAttempts(attempts)
             prefs.setLives(lives)
             prefs.setHasActiveRun(hasActiveRun)
+
+            updateAndPersistDeckPosFor(puzzleNumber)
 
             loadLevel(
                 puzzleNumber = puzzleNumber,
@@ -287,35 +393,6 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
         }
     }
 
-    fun newGame() {
-        viewModelScope.launch {
-            // ✅ Reset prefs first so a process death won’t revive old run
-            prefs.resetRunToNewGame()
-
-            // ✅ Reset in-memory order so you get a fresh shuffle
-            order = emptyList()
-
-            // ✅ Reset in-memory state (tier/score/etc) AND load puzzle #1
-            _ui.value = _ui.value.copy(
-                hasActiveRun = false,
-                score = 0,
-                tier = 1,
-                solvesInTier = 0,
-                tierUpPulse = 0,
-                solvedSinceInt = 0,
-                lastIntAt = 0L
-            )
-
-            loadLevel(
-                puzzleNumber = 1,
-                attempts = Rules.MAX_ATTEMPTS,
-                lives = Rules.ARCADE_LIVES,
-                adsRemoved = _ui.value.adsRemoved,
-                solvedSince = 0,
-                lastInt = 0L
-            )
-        }
-    }
 
 
     fun next() {
@@ -331,6 +408,7 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
 
             // ✅ reset run state
             order = emptyList()
+            orderCycle = -1
             _ui.value = _ui.value.copy(
                 tier = 1,
                 solvesInTier = 0,
@@ -367,21 +445,57 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
 
     }
 
-    fun startNewRun() {
-        order = emptyList() // ✅ force a new shuffle for the next run
+    fun quitToHome() {
+        // 1) Update in-memory UI immediately so dialog won't reappear
+        _ui.value = _ui.value.copy(
+            hasActiveRun = false,
+            // reset the "dead run" flags so game screen won't show game over
+            livesLeft = Rules.ARCADE_LIVES,
+            attemptsLeft = Rules.MAX_ATTEMPTS,
+            solved = false,
+            failed = false,
+            guessed = emptySet(),
+            wrong = emptySet(),
+            puzzleNumber = 1,
+            tier = 1,
+            solvesInTier = 0,
+            tierUpPulse = 0,
+            score = 0
+        )
 
+        // 2) Persist so Home won't show "Resume"
+        viewModelScope.launch {
+            prefs.setHasActiveRun(false)
+            prefs.setLevel(1)
+            prefs.setAttempts(Rules.MAX_ATTEMPTS)
+            prefs.setLives(Rules.ARCADE_LIVES)
+            prefs.resetSolvedSinceInt()
+            prefs.setLastIntAt(0L)
+        }
+    }
+
+
+
+    fun startNewRun() {
+        // Run begins at the current global position
+        runStartPos = deckPos
+
+        // ✅ RESET in-memory run state FIRST (so loadLevel() "preserves" the reset values)
         _ui.value = _ui.value.copy(
             tier = 1,
             solvesInTier = 0,
             tierUpPulse = 0,
             score = 0,
+
             puzzleNumber = 1,
             attemptsLeft = Rules.MAX_ATTEMPTS,
             livesLeft = Rules.ARCADE_LIVES,
+
             guessed = emptySet(),
             wrong = emptySet(),
             solved = false,
             failed = false,
+
             hasActiveRun = true
         )
 
@@ -390,6 +504,9 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
             prefs.setLevel(1)
             prefs.setAttempts(Rules.MAX_ATTEMPTS)
             prefs.setLives(Rules.ARCADE_LIVES)
+
+            // ✅ Option B state
+            prefs.setRunStartPos(runStartPos)
 
             loadLevel(
                 puzzleNumber = 1,
@@ -404,16 +521,17 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
 
 
 
+
+
 //    fun startNewRun() {
-//        // ✅ Immediately get out of "game over" UI state
+//        order = emptyList()
+//        orderCycle = -1   // ✅ ADD THIS
+//
 //        _ui.value = _ui.value.copy(
-//            // reset run/progression
 //            tier = 1,
 //            solvesInTier = 0,
 //            tierUpPulse = 0,
 //            score = 0,
-//
-//            // reset round state
 //            puzzleNumber = 1,
 //            attemptsLeft = Rules.MAX_ATTEMPTS,
 //            livesLeft = Rules.ARCADE_LIVES,
@@ -421,19 +539,15 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
 //            wrong = emptySet(),
 //            solved = false,
 //            failed = false,
-//
-//            // ✅ mark active
 //            hasActiveRun = true
 //        )
 //
-//        // ✅ Persist and load fresh puzzle
 //        viewModelScope.launch {
 //            prefs.setHasActiveRun(true)
-//            prefs.setLevel(1) // you're reusing LEVEL as puzzleNumber
+//            prefs.setLevel(1)
 //            prefs.setAttempts(Rules.MAX_ATTEMPTS)
 //            prefs.setLives(Rules.ARCADE_LIVES)
 //
-//            // load the actual puzzle content
 //            loadLevel(
 //                puzzleNumber = 1,
 //                attempts = Rules.MAX_ATTEMPTS,
@@ -444,11 +558,6 @@ class GameViewModel(private val prefs: Prefs): ViewModel() {
 //            )
 //        }
 //    }
-
-
-
-
-
 
 
     fun shouldShowInterstitial(now: Long): Boolean {

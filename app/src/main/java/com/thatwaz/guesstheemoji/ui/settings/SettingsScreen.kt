@@ -18,19 +18,35 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.thatwaz.guesstheemoji.BuildConfig
+import com.thatwaz.guesstheemoji.data.Keys
+import com.thatwaz.guesstheemoji.data.Prefs
+import kotlinx.coroutines.launch
 
 
 @Composable
 fun SettingsScreen(
+    prefs: Prefs,
     onBack: () -> Unit,
     onRemoveAds: () -> Unit
 ) {
     val ctx = LocalContext.current
+
+    // Theme state
+    val p by prefs.flow.collectAsState(initial = null)
+    val themeMode = p?.get(Keys.THEME_MODE) ?: 0 // 0=system, 1=light, 2=dark
+
+    val scope = rememberCoroutineScope()
+    fun setTheme(mode: Int) {
+        scope.launch { prefs.setThemeMode(mode) } // <-- confirm this matches your Prefs
+    }
 
     Column(
         Modifier
@@ -58,6 +74,32 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(20.dp))
+
+        // ===================== THEME =====================
+        Text("Theme", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { setTheme(0) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (themeMode == 0) "✓ System" else "System") }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { setTheme(1) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (themeMode == 1) "✓ Light" else "Light") }
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { setTheme(2) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (themeMode == 2) "✓ Dark" else "Dark") }
+
+        Spacer(Modifier.height(24.dp))
+        // =================== END THEME ===================
 
         // Feedback
         Button(
@@ -107,21 +149,13 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        // Disabled Rate app (Coming Soon)
         Button(
-            onClick = { /* disabled */ },
-            enabled = false,
+            onClick = { openPlayStore(ctx, ctx.packageName) },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Rate this App")
-                Text(
-                    "(Coming Soon)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text("Rate this App")
         }
+
 
         Spacer(Modifier.height(12.dp))
 
@@ -131,6 +165,9 @@ fun SettingsScreen(
         ) { Text("Back") }
     }
 }
+
+
+
 
 
 /* ---------- Helpers ---------- */
