@@ -13,6 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+app/release/
 
 # Hide real AdMob IDs
 app/src/main/java/com/thatwaz/guesstheemoji/ui/ads/AdsIds.kt
