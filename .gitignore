@@ -14,6 +14,8 @@
 .cxx
 local.properties
 app/release/
+.idea/AndroidProjectSystem.xml
+.idea/runConfigurations.xml
 
 # Hide real AdMob IDs
 app/src/main/java/com/thatwaz/guesstheemoji/ui/ads/AdsIds.kt
